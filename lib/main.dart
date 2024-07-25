@@ -1,25 +1,24 @@
-
 import 'package:chat_application/service/auth_service.dart';
 import 'package:chat_application/service/navigation_service.dart';
 import 'package:chat_application/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:screen_protector/screen_protector.dart';
 
 void main() async {
   await setup();
   runApp(MyApp());
 }
 
-
-
-
-
-
 Future<void> setup() async {
   WidgetsFlutterBinding.ensureInitialized();
   await setupfirebase();
   await registerservice();
+  await ScreenProtector.protectDataLeakageOn();
+  await ScreenProtector.preventScreenshotOn();
+
+
+  await ScreenProtector.protectDataLeakageWithColor(Colors.black);
 }
 
 class MyApp extends StatelessWidget {
@@ -34,15 +33,15 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(debugShowCheckedModeBanner: false,
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
       navigatorKey: _navigationService.navigatorkey,
       title: 'videoplayer',
       theme: ThemeData(
-        textTheme: GoogleFonts.montserratTextTheme(),
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      initialRoute: _authService.user != null ? "home" : "/login",
+      initialRoute: _authService.user != null ? "/playscreen" : "/login",
       routes: _navigationService.routes,
     );
   }

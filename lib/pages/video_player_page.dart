@@ -1,12 +1,13 @@
-import 'package:appinio_video_player/appinio_video_player.dart';
-import 'package:chat_application/service/navigation_service.dart';
-import 'package:dio/dio.dart';
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:get_it/get_it.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:dio/dio.dart';
+import 'package:better_player/better_player.dart';
+import 'package:get_it/get_it.dart';
+import 'package:chat_application/service/navigation_service.dart';
 
-enum Source { Asset, Network }
+enum Source { Network, Offline }
 
 class VideoPlayerPage extends StatefulWidget {
   const VideoPlayerPage({super.key});
@@ -16,10 +17,8 @@ class VideoPlayerPage extends StatefulWidget {
 }
 
 class _VideoPlayerPageState extends State<VideoPlayerPage> {
-  CustomVideoPlayerController? _customVideoPlayerController;
-  late CachedVideoPlayerController _videoPlayerController;
-
-  Source currentSource = Source.Asset;
+  BetterPlayerController? _betterPlayerController;
+  Source currentSource = Source.Network;
 
   final List<String> networkVideos = [
     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
@@ -27,24 +26,22 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"
   ];
 
-  final List<String> assetVideos = [
-    "assets/videos/vedio1.mp4",
-    "assets/videos/videofile.mp4",
-  ];
+  List<String> downloadedVideos = [];
 
   bool isLoading = true;
   late NavigationService _navigationService;
+  final GetIt _getIt = GetIt.instance;
+
   @override
   void initState() {
     super.initState();
-     _navigationService = _getIt.get<NavigationService>();
+    _navigationService = _getIt.get<NavigationService>();
     initializeVideoPlayer(currentSource, networkVideos[0]);
   }
-final GetIt _getIt = GetIt.instance;
+
   @override
   void dispose() {
-    _customVideoPlayerController?.dispose();
-    _videoPlayerController.dispose();
+    _betterPlayerController?.dispose();
     super.dispose();
   }
 
@@ -53,21 +50,23 @@ final GetIt _getIt = GetIt.instance;
     return SafeArea(
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
+          title: const Text(
             "Video Player",
             style: TextStyle(color: Colors.white),
           ),
           backgroundColor: Colors.red,
           leading: IconButton(
-            icon: Icon(
+            icon: const Icon(
               Icons.person,
               color: Colors.white,
             ),
-            onPressed: () {_navigationService.pushNamed("/home");},
+            onPressed: () {
+              _navigationService.pushNamed("/home");
+            },
           ),
         ),
         body: isLoading
-            ? Center(
+            ? const Center(
                 child: CircularProgressIndicator(
                   color: Colors.red,
                 ),
@@ -76,14 +75,16 @@ final GetIt _getIt = GetIt.instance;
                 children: [
                   Expanded(
                     flex: 3,
-                    child: _customVideoPlayerController != null
-                        ? CustomVideoPlayer(
-                            customVideoPlayerController:
-                                _customVideoPlayerController!,
+                    child: _betterPlayerController != null
+                        ? AspectRatio(
+                            aspectRatio: 16 / 9,
+                            child: BetterPlayer(
+                              controller: _betterPlayerController!,
+                            ),
                           )
                         : Container(
                             color: Colors.black,
-                            child: Center(
+                            child: const Center(
                               child: Text(
                                 "Select a video to play",
                                 style: TextStyle(color: Colors.white),
@@ -104,7 +105,7 @@ final GetIt _getIt = GetIt.instance;
                   downloadVideo(networkVideos[
                       0]); // download the currently playing network video
                 },
-                child: Icon(Icons.download),
+                child: const Icon(Icons.download),
                 backgroundColor: Colors.red,
               )
             : null,
@@ -137,16 +138,20 @@ final GetIt _getIt = GetIt.instance;
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor:
-                  currentSource == Source.Asset ? Colors.red : Colors.grey,
+                  currentSource == Source.Offline ? Colors.red : Colors.grey,
             ),
             child: const Text(
-              "Asset",
+              "Offline",
               style: TextStyle(color: Colors.white),
             ),
             onPressed: () {
               setState(() {
-                currentSource = Source.Asset;
-                initializeVideoPlayer(currentSource, assetVideos[0]);
+                currentSource = Source.Offline;
+                if (downloadedVideos.isNotEmpty) {
+                  initializeVideoPlayer(currentSource, downloadedVideos[0]);
+                } else {
+                  initializeVideoPlayer(currentSource, '');
+                }
               });
             },
           ),
@@ -157,15 +162,15 @@ final GetIt _getIt = GetIt.instance;
 
   Widget _videoList() {
     List<String> videos =
-        currentSource == Source.Asset ? assetVideos : networkVideos;
+        currentSource == Source.Network ? networkVideos : downloadedVideos;
     return ListView.builder(
       itemCount: videos.length,
       itemBuilder: (context, index) {
         return Card(
-          margin: EdgeInsets.all(8.0),
+          margin: const EdgeInsets.all(8.0),
           child: ListTile(
             title: Text('Video ${index + 1}'),
-            trailing: Icon(Icons.play_circle_fill, color: Colors.red),
+            trailing: const Icon(Icons.play_circle_fill, color: Colors.red),
             onTap: () {
               initializeVideoPlayer(currentSource, videos[index]);
             },
@@ -180,48 +185,59 @@ final GetIt _getIt = GetIt.instance;
       isLoading = true;
     });
 
-    if (source == Source.Asset) {
-      _videoPlayerController = CachedVideoPlayerController.asset(videoPath);
-    } else {
-      _videoPlayerController = CachedVideoPlayerController.network(videoPath);
+    BetterPlayerDataSource? dataSource;
+    if (source == Source.Offline && videoPath.isNotEmpty) {
+      dataSource =
+          BetterPlayerDataSource(BetterPlayerDataSourceType.file, videoPath);
+    } else if (source == Source.Network) {
+      dataSource =
+          BetterPlayerDataSource(BetterPlayerDataSourceType.network, videoPath);
     }
 
-    _videoPlayerController.initialize().then((_) {
-      setState(() {
-        isLoading = false;
-        _customVideoPlayerController = CustomVideoPlayerController(
-          context: context,
-          videoPlayerController: _videoPlayerController,
-        );
-      });
-    }).catchError((error) {
-      setState(() {
-        isLoading = false;
-      });
-      print('Video Player Error: $error');
+    if (dataSource != null) {
+      _betterPlayerController = BetterPlayerController(
+        const BetterPlayerConfiguration(),
+        betterPlayerDataSource: dataSource,
+      );
+    } else {
+      _betterPlayerController = null;
+    }
+
+    setState(() {
+      isLoading = false;
     });
   }
 
   Future<void> downloadVideo(String url) async {
     try {
-      if (await Permission.storage.request().isGranted) {
+      PermissionStatus status = await Permission.storage.request();
+      if (status.isGranted) {
         var dir = await getExternalStorageDirectory();
         if (dir != null) {
-          String savePath = '${dir.path}/downloaded_video.mp4';
+          String savePath =
+              '${dir.path}/downloaded_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
           await Dio().download(url, savePath);
+
+          setState(() {
+            downloadedVideos.add(
+                savePath); // Add the downloaded video to the downloadedVideos list
+          });
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Video downloaded to $savePath')),
           );
         }
-      } else {
+      } else if (status.isDenied) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Permission denied')),
+          const SnackBar(content: Text('Permission denied')),
         );
+      } else if (status.isPermanentlyDenied) {
+        openAppSettings();
       }
     } catch (e) {
       print('Download error: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Download failed')),
+        const SnackBar(content: Text('Download failed')),
       );
     }
   }

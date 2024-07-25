@@ -21,7 +21,7 @@ class _LoginPageState extends State<LoginPage> {
   late AlertService _alertService;
 
   String? email, password;
-
+bool isLoading=false;
   @override
   void initState() {
     _authService = _getIt.get<AuthService>();
@@ -93,11 +93,16 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Widget _loginButton() {
+  
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
         onPressed: () async {
+          
           if (_loginFormKey.currentState?.validate() ?? false) {
+            setState(() {
+            isLoading=true;
+          });
             _loginFormKey.currentState?.save();
             bool result = await _authService.login(email!, password!);
 
@@ -107,7 +112,13 @@ class _LoginPageState extends State<LoginPage> {
                 text: 'Successfully logged in',
                 icon: Icons.check,
               );
+               setState(() {
+            isLoading=false;
+          });
             } else {
+               setState(() {
+            isLoading=false;
+          });
               _alertService.showToasr(
                 text: 'Invalid credentials. Please try again.',
                 icon: Icons.error,
@@ -115,7 +126,7 @@ class _LoginPageState extends State<LoginPage> {
             }
           }
         },
-        child: Text('Login'),
+        child:isLoading?Center(child: CircularProgressIndicator()) :Text('Login'),
       ),
     );
   }
